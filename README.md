@@ -126,10 +126,23 @@ provider = "CPUExecutionProvider"
 ```
 
 ### MCP Server Integration
-```bash
-python bg3_mcp_server.py
+Configure your LM Studio mcp.json file to something like this:
+```json
+{
+  "mcpServers": {
+    "BG3 Wiki MCP": {
+      "command": "D:\\Scripts\\lm-studio-mcp-server\\venv\\Scripts\\python.exe",
+      "args": [
+        "D:\\Scripts\\bg3-wiki\\bg3_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
 ```
-The MCP server exposes a `search_bg3_wiki` tool for integration with other applications.
+The MCP server exposes a `search_bg3_wiki` tool for the AI to use.
 
 ## 📊 Scraped Data Categories
 
