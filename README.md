@@ -2,6 +2,8 @@
 
 A comprehensive, metadata-driven **RAG (Retrieval-Augmented Generation)** knowledge base system that scrapes and indexes the official [Baldur's Gate 3 Wiki](https://bg3.wiki) for AI-powered querying using local LLMs.
 
+![Overview](media/overview.png)
+
 ## 🎮 Overview
 
 This project implements a **RAG pipeline** to create a searchable vector database of all Baldur's Gate 3 wiki content, enabling intelligent queries about:
