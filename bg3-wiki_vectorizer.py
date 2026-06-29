@@ -4,6 +4,7 @@ import json
 import chromadb
 # Import the explicit ONNX class rather than the generic default function wrapper
 from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+import onnxruntime as ort
 
 def clean_wiki_syntax(text):
     """Transforms raw wiki templates into clean, readable text."""
@@ -28,20 +29,32 @@ def clean_wiki_syntax(text):
 script_dir = os.path.dirname(os.path.realpath(__file__))
 chroma_client = chromadb.PersistentClient(path=os.path.join(script_dir, "bg3_vector_db"))
 
-# --- FORCE EXPLICIT CUDA ORDERING BYPASSING TENSORRT NATIVELY ---
-embedding_fn = ONNXMiniLM_L6_V2(preferred_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+# --- ROBUST PROVIDER SELECTION ---
+def get_embedding_function():
+    # Automatically detect if CUDA is available, otherwise fall back to CPU
+    available_providers = ort.get_available_providers()
+    if "CUDAExecutionProvider" in available_providers:
+        provider = "CUDAExecutionProvider"
+        print("Using CUDAExecutionProvider for embedding extraction...", flush=True)
+    else:
+        provider = "CPUExecutionProvider"
+        print("Using CPUExecutionProvider for embedding extraction...", flush=True)
+    
+    return ONNXMiniLM_L6_V2(preferred_providers=[provider])
 
-# Connect or build collection with our explicit hardware instructions
+embedding_fn = get_embedding_function()
+
+# Connect or build collection with our dynamic hardware instructions
 collection = chroma_client.get_or_create_collection(name="bg3_wiki_data", embedding_function=embedding_fn)
 
-print("Starting dynamic master indexing with locked CUDA providers...")
+print("Starting dynamic master indexing with chunking strategy...")
 
-doc_id_counter = 0
+chunk_id_counter = 0
 
 # Folders we want to strictly ignore so the AI doesn't parse code/metadata
 ignored_dirs = {".venv", "bg3_vector_db", "__pycache__", ".git"}
 
-# --- NEW DYNAMIC SYSTEM USING OS.WALK ---
+# --- DYNAMIC SYSTEM USING OS.WALK ---
 for root, dirs, files in os.walk(script_dir):
     # Modifying dirs in-place lets os.walk skip ignored paths entirely
     dirs[:] = [d for d in dirs if d not in ignored_dirs]
@@ -78,32 +91,44 @@ for root, dirs, files in os.walk(script_dir):
             if line_strip == "}}" or line_strip == "":
                 continue
             
-            # --- NEW CLEANING STEP RUNS HERE ---
+            # --- CLEANING STEP RUNS HERE ---
             cleaned_line = clean_wiki_syntax(line_strip)
             if cleaned_line.strip():
                 clean_lines.append(cleaned_line)
             
-        clean_text = "\n".join(clean_lines)
-        if not clean_text.strip():
-            continue  
+        # Reconstruct the cleaned text and split it cleanly into structural paragraphs
+        clean_full_text = "\n".join(clean_lines)
+        paragraphs = clean_full_text.split("\n\n")
+        
+        # --- PARAGRAPH CHUNKING LOOP ---
+        paragraph_index = 0
+        for para in paragraphs:
+            clean_para = para.strip()
             
-        # --- STRUCTURE FOR CROSS-REFERENCING ---
-        structured_document = f"DOCUMENT TITLE: {page_title}\n"
-        structured_document += f"GAME CATEGORIES: {', '.join(categories)}\n"
-        structured_document += f"DATA SOURCE FOLDER: {relative_folder}\n" # Tracks dynamic folder structure
-        structured_document += f"CONTENT:\n{clean_text}"
-        
-        metadata = {
-            "title": page_title,
-            "folder": relative_folder,
-            "primary_category": categories[0] if categories else "unknown"
-        }
-        
-        collection.add(
-            documents=[structured_document],
-            metadatas=[metadata],
-            ids=[f"doc_{doc_id_counter}"]
-        )
-        doc_id_counter += 1
+            # Skip empty paragraphs or trivial snippets (under 40 characters)
+            if len(clean_para) < 40:
+                continue
+                
+            # Inject structural cross-referencing metadata into every individual chunk
+            structured_chunk = f"DOCUMENT TITLE: {page_title}\n"
+            structured_document = f"DOCUMENT TITLE: {page_title}\n"
+            structured_chunk += f"GAME CATEGORIES: {', '.join(categories)}\n"
+            structured_chunk += f"DATA SOURCE FOLDER: {relative_folder}\n"
+            structured_chunk += f"CONTENT CHUNK:\n{clean_para}"
+            
+            metadata = {
+                "title": page_title,
+                "folder": relative_folder,
+                "primary_category": categories[0] if categories else "unknown",
+                "chunk_index": paragraph_index
+            }
+            
+            collection.add(
+                documents=[structured_chunk],
+                metadatas=[metadata],
+                ids=[f"chunk_{chunk_id_counter}"]
+            )
+            chunk_id_counter += 1
+            paragraph_index += 1
 
-print(f"\nSuccess! Dynamically crawled all folders and indexed {doc_id_counter} game files.")
+print(f"\nSuccess! Dynamically crawled all folders and indexed {chunk_id_counter} precise chunks.")
